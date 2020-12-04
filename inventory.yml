@@ -1,0 +1,15 @@
+
+all:
+   children:
+    rr_server:
+    rr_docker:
+
+rr_clients:
+    hosts:
+      client1.t1.dk:
+          rotuer_id: 10.0.0.10
+      client2.t1.dk:
+          rotuer_id: 10.0.0.11
+rr_server:
+    hosts:
+      rr0[1:2].t1.dk:

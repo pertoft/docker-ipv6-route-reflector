@@ -1,0 +1,17 @@
+# Ansible Manged!
+# Rotue Reflector Clients
+template bgp rr_upstream_routers {
+  local as {{bgp_as}};
+  source address {{source_if}};
+  graceful restart;
+  export filter bgp_allowed_prefixes;
+  import filter only_default_route; # We need to import a default route, so BGP can resolve the link netowrks to docker hosts - alternative you could import it from the kernel default route
+}
+
+# Upstream Routers
+{% for n in bgp_upstream_routers %}
+protocol bgp {{n.host}} from rr_upstream_routers {
+  neighbor {{n.ip6}} as {{n.as}};
+  {% if n.password %}password "{{n.password}}";{% endif %}
+}
+{% endfor %}

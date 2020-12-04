@@ -1,0 +1,27 @@
+---
+- name: Verify local git us up to date
+  hosts: localhost
+#  become: True
+  gather_facts: True
+  vars_files: config.yml
+
+  tasks:
+      - shell: git fetch
+
+      - shell: git status --porcelain
+        register: git_status
+
+      - fail:
+          msg: "Local git is not committed and pushed"
+        when: git_status.stdout != ""
+
+      - shell: git rev-parse HEAD
+        register: git_local
+
+      - shell: git rev-parse master@{upstream}
+        register: git_remote
+
+      - fail:
+          msg: "Local git repo is out of sync with remote"
+        when: git_local.stdout != git_remote.stdout
+

@@ -1,0 +1,20 @@
+#Ansible Manged!
+
+debug protocols all; #Its nice to have some debug in the logs, it can be commende out
+log syslog { debug, trace, info, remote, warning, error, auth, fatal, bug };
+log stderr all;
+log "/var/log/bird.log" all; # If you dont like systemd logs
+
+include "bird6-filters.conf";
+
+router id {{ router_id }};
+
+protocol device { } # Skal være tilstede, ellers finder bird ikke lokale interfaces
+
+protocol kernel {
+        import none;
+        export all;     # Actually insert routes into the kernel routing table
+}
+
+include "bird6-upstream-routers.conf";
+include "bird6-clients.conf";

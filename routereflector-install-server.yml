@@ -1,0 +1,75 @@
+---
+- name: Configure Netic Route Reflector
+  hosts: rr_server
+  become: True
+  gather_facts: True
+  vars_files: config.yml
+  serial: 1 #Only configure one at a time
+
+  tasks:
+    - name: Install BIRD BGP
+      apt:
+        name: bird-bgp
+        state: present
+      tags: install
+
+    #Remove self from neighbour list and resovle DNS
+    - set_fact:
+        bgp_rr: "{{ bgp_rr | default([]) + [ { 'host': item, 'ip4': lookup('dig', item, 'qtype=A'), 'ip6': lookup('dig', item, 'qtype=AAAA'), 'remote': bgp_as } ] }}"
+      when: item != inventory_hostname
+      with_items: "{{ groups['rr_server'] }}"
+      delegate_to: localhost
+
+
+    #Remove self from neighbour list and resovle DNS
+    - set_fact:
+        bgp_clients: "{{ bgp_clients | default([]) + [ { 'host': item, 'ip4': lookup('dig', item, 'qtype=A'), 'ip6': lookup('dig', item, 'qtype=AAAA'), 'remote': bgp_client_as } ] }}"
+      when: item != inventory_hostname
+      with_items: "{{ groups['rr_clients'] }}"
+      delegate_to: localhost
+
+    - set_fact:
+        source_if: "{{ lookup('dig', inventory_hostname, 'qtype=AAAA') }}"
+
+    - set_fact:
+        router_id: "127.0.0.{{ source_if.split(':')[-1] }}"
+
+    - name: Drop bird.conf
+      template:
+        src: ./templates/rr-server-bird6.conf.j2
+        dest: /etc/bird/bird6.conf
+
+    - name: Drop bird.conf
+      template:
+        src: ./templates/rr-server-bird6-filters.conf.j2
+        dest: /etc/bird/bird6-filters.conf
+
+    - name: Drop bird-upstream-routers.conf
+      template:
+        src: ./templates/rr-server-bird6-upstream-routers.conf.j2
+        dest: /etc/bird/bird6-upstream-routers.conf
+
+    - name: Drop bird-clients.conf
+      template:
+        src: ./templates/rr-server-bird6-clients.conf.j2
+        dest: /etc/bird/bird6-clients.conf
+
+    - file:
+        path: /etc/bird/bird.conf
+        state: absent
+
+    - file:
+       path: /var/log/bird.log
+       owner: bird
+       group: bird
+       state: touch
+
+    - systemd:
+        name: bird6
+        state: restarted
+        enabled: yes
+
+    - systemd:
+        name: bird
+        state: stopped
+        enabled: no

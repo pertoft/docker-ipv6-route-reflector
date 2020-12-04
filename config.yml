@@ -1,0 +1,6 @@
+bgp_as: 65000
+bgp_client_as: 65001 #Stay in the 65000 range which is private AS'es
+bgp_client_password: 'secret-password1'
+rr_bgp_password: 'secret-password2'
+bgp_upstream_routers:
+   - { host: "router01", ip6: "2a02:db8:a:::1", as: "65000", password: "secret-password3"}

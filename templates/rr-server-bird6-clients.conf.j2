@@ -1,0 +1,22 @@
+# Ansible Manged!
+# Rotue Reflector Clients
+template bgp rr_clients {
+  local as {{bgp_as}};
+  source address {{source_if}}; #We lookup the local source interface ip and set it in a fact
+  multihop; # We need multihop BGP as we will span over multiple subnets
+  rr client; # Configure the RR to be a Route Reflector, which means its allowed to distribute iBGP prefixes longer than 1 hop
+  rr cluster id {{rr_cluster_id}}; # Cluster id from default config. Local significant in own AS and must be the same on both RR
+  graceful restart; # We configure graceful restart which makes it possible to restart a route reflector without a major route update
+  export filter bgp_allowed_prefixes; # We import/export only Docker container networks
+  import filter bgp_allowed_prefixes;
+}
+
+{% if bgp_clients is defined %}
+{% for n in bgp_clients %}
+# {{n.host}}
+protocol bgp {{n.host.split(".")[0] | lower | replace('-', '') }} from rr_clients {
+  neighbor {{n.ip6}} as {{n.remote}};
+}
+
+{% endfor %}
+{% endif %}

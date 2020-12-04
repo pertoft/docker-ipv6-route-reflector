@@ -1,0 +1,193 @@
+---
+- import_playbook: check-git.yml
+
+- name: Configure host as route reflector client
+  hosts: rr_clients
+  become: True
+  gather_facts: True
+  serial: 1
+  vars_files: config.yml
+
+  pre_tasks:
+      - name: Update git (git fetch)
+        delegate_to: localhost
+        become: False
+        shell: git fetch
+
+      - name: Obtain git status
+        shell: git status --porcelain
+        become: False
+        register: git_status
+        check_mode: no
+        delegate_to: localhost
+        changed_when: False
+
+      - fail:
+          msg: "Local git is not committed and pushed"
+        when: git_status.stdout != ""
+        tags:
+          - force_skip_git_check
+
+      - name: Obtain git local commit hash
+        shell: git rev-parse HEAD
+        become: False
+        register: git_local
+        check_mode: no
+        delegate_to: localhost
+        changed_when: False
+
+      - name: Obtain remote git hash
+        shell: git rev-parse master@{upstream}
+        become: False
+        register: git_remote
+        check_mode: no
+        delegate_to: localhost
+        changed_when: False
+
+      - fail:
+          msg: "Local git repo is out of sync with remote"
+        when: git_local.stdout != git_remote.stdout
+        tags:
+          - force_skip_git_check
+
+      - name: Install BIRD BGP
+        apt:
+          name: bird-bgp
+          state: present
+        when:
+          - ansible_os_family == "Debian"
+        tags:
+          - install
+
+      - name: Install Bird6 BGP
+        yum:
+          name: bird6
+          state: present
+        when:
+          - ansible_os_family == "RedHat"
+        tags:
+          - install
+      - file:
+            path: /var/log/bird.log
+            owner: bird
+            group: bird
+            state: touch
+        when:
+            - ansible_os_family == "Debian"
+        tags:
+          - install
+
+
+  tasks:
+    - name: gather os specific variables
+      include_vars: "{{ item }}"
+      with_first_found:
+        - "{{ ansible_os_family }}.yml"
+        - "default.yml"
+      tags: vars
+
+    - name: Install BIRD BGP
+      package:
+        name: "{{ packages }}"
+        state: present
+      tags:
+        - install
+
+    #Remove self from neighbour list and resovle DNS
+    - name: Build list with route reflectors
+      set_fact:
+        bgp_rr: "{{ bgp_rr | default([]) + [ { 'host': item, 'ip4': lookup('dig', item, 'qtype=A'), 'ip6': lookup('dig', item, 'qtype=AAAA'), 'as': bgp_as } ] }}"
+      with_items: "{{groups['rr_server']}}"
+      delegate_to: localhost
+
+    - name: Determine external source interface from host DNS name
+      set_fact:
+        source_if: "{{ lookup('dig', inventory_hostname, 'qtype=AAAA') }}"
+
+    - debug: msg="Router id {{ router_id }}"
+
+    - name: Generate bird bgp configuration (RedHat)
+      template:
+        src: templates/rr-client-bird6.conf.j2
+        dest: /etc/bird6.conf
+      when:
+        - ansible_os_family == "RedHat"
+      notify: restart bird6
+
+
+    - name: Generate bird bgp configuration (Ubuntu)
+      template:
+        src: templates/rr-client-bird6.conf.j2
+        dest: /etc/bird/bird6.conf
+      when:
+        - ansible_os_family == "Debian"
+      notify: restart bird6
+
+    - file:
+        path: /var/log/bird.log
+        owner: "{{ bird_username }}"
+        group: "{{ bird_groupname }}"
+        state: touch
+      # when:
+      #   - ansible_os_family == "RedHat"
+
+    - name: Generate bird logrotate
+      template:
+        src: templates/logrotate-bird.conf.j2
+        dest: /etc/logrotate.d/bird
+        owner: root
+        group: root
+
+    - name: Disable bird ipv4 process
+      service:
+        name: bird
+        state: stopped
+        enabled: False
+      when:
+        - ansible_os_family == "Debian"
+
+    - name: Enable bird6 service
+      service:
+        name: bird6
+        enabled: True
+
+  handlers:
+    - name: restart bird6
+      service:
+        name: bird6
+        state: restarted
+
+- name: Configure Netic Route Reflector
+  hosts: rr_server
+  become: True
+  gather_facts: True
+  serial: 1 # Only work on one rr at the time
+  vars_files: config.yml
+
+  tasks:
+
+    - name: Determine external source interface from host DNS name
+      set_fact:
+        source_if: "{{ lookup('dig', inventory_hostname, 'qtype=AAAA') }}"
+
+    - name: Resovle hostnames from dns
+      set_fact:
+        bgp_clients: "{{ bgp_clients | default([]) + [ { 'host': item, 'ip4': lookup('dig', item, 'qtype=A'), 'ip6': lookup('dig', item, 'qtype=AAAA'), 'remote': bgp_client_as } ] }}"
+      when: item != inventory_hostname
+      with_items: "{{ groups['rr_clients'] }}"
+      delegate_to: localhost
+
+    - name: Drop bird-clients.conf
+      template:
+        src: ./templates/rr-server-bird6-clients.conf.j2
+        dest: /etc/bird/bird6-clients.conf
+
+    - name: Reconfigure bird RR
+      shell: birdc6 configure
+      register: bird6_output
+
+    - debug: var=bird6_output.stdout
+
+    - fail:
+        msg: "FATAL! Bird configuration error"
+      when: bird6_output.stdout is not regex("Reconfigured")

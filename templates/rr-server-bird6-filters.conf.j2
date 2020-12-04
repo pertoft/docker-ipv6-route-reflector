@@ -1,0 +1,17 @@
+# Ansible Manged!
+# Rotue Reflector Filters
+#All IPv6 prefixes for Docker container networks must be added to this list, all other prefixes will be dropped
+filter bgp_allowed_prefixes {
+ if (net ~ 2002:db8:c::/48) then accept; #High level prefix for Docker container networks
+ else reject;
+}
+
+filter only_default_route {
+ if (net ~ 0::/0) then accept;
+ else reject;
+}
+
+filter no_default_route {
+ if (net ~ 0::/0) then reject;
+ else accept;
+}

@@ -1,0 +1,43 @@
+debug protocols all;
+log syslog { debug, trace, info, remote, warning, error, auth, fatal, bug };
+log stderr all;
+log "/var/log/bird.log" all;
+
+#We need a default route propogated to rr clients, otherwise, they will not be able to resolve next hop addresses and the routes are rejected.
+filter only_default_route {
+ if (net ~ 0::/0) then accept;
+ else reject;
+}
+
+#Its very important that router id is unique, and unfortunatly it must be an IPv4 prefix which does not match with an IPv6. 
+# Therefor the router id must be configured in the inventory file
+router id {{ router_id }};
+
+protocol device { } # Must be present, othewise bird does not find any local interfaces
+
+# Kernel determins if the routes should be imported or exported to the Linux kernel.
+# We import the default route from ther kernel, so we get the local default gateway configured in linux.
+protocol kernel {
+        import none;
+        learn;
+        import filter only_default_route;
+        export all;
+}
+
+# Docker scans local interfaces and redistribute them to upstream routers
+protocol direct {
+   debug all;
+   interface "eth*","ens*","docker*","br-*"; # Local network interfaces is required, otherwise iBGP cant resolve the next hop
+}
+
+# Route Reflectors
+{% for n in bgp_rr %}
+protocol bgp {{n.host.split(".")[0] | lower }} {
+  local as {{bgp_as}};
+  neighbor {{n.ip6}} as {{n.as}};
+  source address {{source_if}};
+  multihop;
+  export all;
+  import all;
+}
+{% endfor %}

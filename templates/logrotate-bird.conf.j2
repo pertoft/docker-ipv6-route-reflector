@@ -1,0 +1,13 @@
+#Ansible managed
+/var/log/bird.log {
+        daily
+        rotate 12
+        compress
+        delaycompress
+        missingok
+        notifempty
+        postrotate
+             /usr/bin/killall -HUP bird6
+	endscript
+        create 644 {{ bird_username }} {{ bird_groupname }}
+}

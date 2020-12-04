@@ -1,0 +1,5 @@
+bird_username: bird
+bird_groupname: bird
+packages:
+  - bird-bgp
+rr_cluster_id: 127.0.0.1
