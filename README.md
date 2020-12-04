@@ -3,7 +3,6 @@
 When you are using docker with IPv6, you have a private subnet for your containers and then NAT to your host IP (publish ports), however in IPv6 we do not have NAT.
 Figure 1 illustrates how the subnet 2002:db8:3:://64 which is used for the container C1 is not visible from the upstream Router1.
 
-`````
                          +--------------------------------------------------------+
                          |                    Docker01.t1.dk                      |
                          |                                                        |
@@ -34,8 +33,8 @@ Figure 1 illustrates how the subnet 2002:db8:3:://64 which is used for the conta
                          +--------------------------------------------------------+
 
 
-````
-Figure1: Hidden Container subnet
+
+Figure 1: Hidden Container subnet
 
 Therefore we need a public IPv6 block for our containers, and the Docker host must then proxy Neighbour Discovery Protocol (NDP) Packets or Route the subnet.
 
@@ -49,7 +48,6 @@ There are two playbooks:
 
 Currently Ubuntu, Centos and RedHat OS are supported.
 
-```
                       +-----------+
                       |rr01.t1.dk |
                    +--+ASN 65001  +--+
@@ -60,5 +58,4 @@ Currently Ubuntu, Centos and RedHat OS are supported.
 +-----------+      |  |rr02.t1.dk +--+
                    +--+ASN 65001  |
                       +-----------+
-```
-Figure: Route Reflector configuration example
+Figure 2: Route Reflector configuration example
